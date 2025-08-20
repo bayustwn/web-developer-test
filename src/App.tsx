@@ -1,12 +1,131 @@
+import { useEffect, useRef, useState } from "react";
 import AuthorDate from "./components/AuthorDate";
+import SkeletonHero from "./components/SkeletonHero";
+import SkeletonGrid from "./components/SkeletonGrid";
 import Navbar from "./components/Navbar";
+import axios from "axios";
+import type { News } from "./model/News";
+import { mappers } from "./utils/Mapper";
 
 function App() {
+  const [page, setPage] = useState(1);
+  const [news, setNews] = useState<News[]>([]);
+  const [loading, setLoading] = useState(true);
+  const limit = 3;
+  const language = "en";
+  const prevNewsCountRef = useRef(0);
+  const shouldScrollOnAppendRef = useRef(false);
+
+  const getNewsKey = (item: News): string => {
+    const byUrl = item.url?.trim();
+    if (byUrl && byUrl.length > 0) return byUrl;
+    const byId = item.id?.toString().trim();
+    if (byId && byId.length > 0) return byId;
+    const byTitleDate = `${item.title ?? ""}|${item.published_at ?? ""}`.trim();
+    return byTitleDate;
+  };
+
+  const getAllNews = async () => {
+    try {
+      setLoading(true);
+      const [news1, news2, news3] = await Promise.all([
+        axios.get(`https://api.thenewsapi.com/v1/news/all?`, {
+          params: {
+            page,
+            limit,
+            language,
+            search: "artificial intelligence AI",
+            api_token: import.meta.env.VITE_PUBLIC_THENEWSAPI,
+          },
+        }),
+        axios.get(`https://eventregistry.org/api/v1/article/getArticles?`, {
+          params: {
+            apiKey: import.meta.env.VITE_PUBLIC_EVENTREGISTRY,
+            articlesPage: page,
+            articlesCount: limit,
+            keyword: "artificial intelligence AI",
+            language: "eng",
+            articlesSortBy: "date",
+          },
+        }),
+        axios.get(`https://news.fcsapi.com/api/news?`, {
+          params: {
+            find: "artificial AI",
+            language,
+            limit,
+            offset: (page - 1) * limit,
+            access_key: import.meta.env.VITE_PUBLIC_FCAPI,
+          },
+        }),
+      ]);
+
+      const allNews = [
+        ...news1.data.data.map(mappers.news1),
+        ...news2.data.articles.results.map(mappers.news2),
+        ...news3.data.response.map(mappers.news3),
+      ];
+
+      setNews((old) => {
+        const seen = new Set<string>();
+        const result: News[] = [];
+        const addUnique = (items: News[]) => {
+          for (const n of items) {
+            const key = getNewsKey(n);
+            if (!key || seen.has(key)) continue;
+            seen.add(key);
+            result.push(n);
+          }
+        };
+
+        if (page === 1) {
+          addUnique(allNews);
+        } else {
+          addUnique(old);
+          addUnique(allNews);
+        }
+
+        return result;
+      });
+    } catch (error) {
+      alert("Something went wrong, please try again later." + error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    getAllNews();
+  }, [page]);
+
+  const nextPage = () => {
+    if (loading) return;
+    shouldScrollOnAppendRef.current = true;
+    setPage((now) => now + 1);
+    console.log("Next page:", page);
+  }
+
+  useEffect(() => {
+    const prevCount = prevNewsCountRef.current;
+    if (shouldScrollOnAppendRef.current && news.length > prevCount) {
+      window.scrollBy({ top: -800, behavior: "smooth" });
+      shouldScrollOnAppendRef.current = false;
+    }
+    prevNewsCountRef.current = news.length;
+  }, [news.length]);
+
   return (
     <div className="relative overflow-hidden">
-      <img src="/icons/grid.svg" className="absolute -top-40 scale-x-[1.2]" alt="grid" />
-      <img src="/icons/grid.svg" className="absolute -bottom-70 right-0 scale-x-[1.2] transform rotate-180" alt="grid" />
-      <section>
+      <img
+        src="/icons/grid.svg"
+        className="absolute -z-99 -top-40 scale-x-[1.2]"
+        alt="grid"
+      />
+      <img
+        src="/icons/grid.svg"
+        className="absolute -z-99 -bottom-70 right-0 scale-x-[1.2] transform rotate-180"
+        alt="grid"
+      />
+      <section className="z-10">
         <div className="mb-10 ">
           <Navbar />
         </div>
@@ -27,32 +146,34 @@ function App() {
             </div>
           </div>
         </div>
-        <div className="grid grid-cols-4 gap-3">
+        {loading && news.length === 0 ? (
+          <SkeletonHero />
+        ) : (
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-10 md:gap-3">
           <div className="w-full flex flex-col gap-3">
             <img
-              src="/image/placeholder.webp"
-              className="rounded-lg object-cover w-full h-[50%]"
-              alt="placeholder"
+              src={news[0]?.image}
+              className="rounded-lg object-cover w-full md:h-[50%]"
+              alt="news"
             />
-            <AuthorDate author="Aswin Pranaja" date="20 Juli 2025" />
+            <AuthorDate author={news[0]?.author} date={news[0]?.published_at} />
             <div className="flex flex-col gap-2">
               <h1 className="line-clamp-2 font-bold text-xl">
-                Berita Tentang AI yang menjarah Tempat Umum, Akibatkan Kerugian
-                2 Miliar
+                {news[0]?.title}
               </h1>
-              <p className="line-clamp-2 text-sm">
-                Berita Tentang AI yang menjarah Tempat Umum yang susah dan
-                melihat semuanya, kuasai pernafasan udara untuk mengendalikan
-                dunia agar kamu tahu rasanya.
-              </p>
+              <p className="line-clamp-2 text-sm">{news[0]?.description}</p>
             </div>
-            <p className="underline text-primary cursor-pointer font-semibold text-sm">
+            <a
+              href={news[0]?.url}
+              target="_blank"
+              className="underline text-primary cursor-pointer font-semibold text-sm"
+            >
               Read More →
-            </p>
+            </a>
           </div>
-          <div className="w-full h-130 col-span-2 rounded-lg relative overflow-hidden">
+          <div className="w-full h-130 md:col-span-2 rounded-lg relative overflow-hidden">
             <img
-              src="/image/placeholder.webp"
+              src={news[1]?.image}
               className="rounded-lg object-cover w-full h-full"
               alt="placeholder"
             />
@@ -61,87 +182,102 @@ function App() {
             <div className="absolute flex flex-col gap-2 bottom-0 left-0 p-5 text-white text-sm z-10">
               <div className="flex items-center flex-row gap-2">
                 <img src="/icons/author.svg" alt="search" className="w-3 h-3" />
-                <p>Aswin Pranaja</p>
+                <p>{news[1]?.author}</p>
               </div>
               <h1 className="leading-6 line-clamp-2 text-xl font-semibold">
-                Berita Tentang AI yang menjarah Tempat Umum, Akibatkan Kerugian
-                2 Miliar
+                {news[1]?.title}
               </h1>
-              <p className="line-clamp-2 text-sm">
-                Berita Tentang AI yang menjarah Tempat Umum yang susah dan
-                melihat semuanya, kuasai pernafasan udara untuk mengendalikan
-                dunia agar kamu tahu rasanya.
-              </p>
+              <p className="line-clamp-2 text-sm">{news[1]?.description}</p>
               <div className="flex mt-2 items-center flex-row gap-2">
                 <img src="/icons/date.svg" alt="search" className="w-3 h-3" />
-                <p className="text-xs text-white/80">20 Juli 2025</p>
+                <p className="text-xs text-white/80">{news[1]?.published_at}</p>
               </div>
             </div>
           </div>
           <div className="w-full flex gap-5  flex-col">
             <div className="flex flex-col gap-2">
               <img
-                src="/image/placeholder.webp"
+                src={news[2]?.image}
                 className="w-full rounded-lg h-35 object-cover"
                 alt="news"
               />
-              <AuthorDate author="Aswin Pranaja" date="20 Juli 2025" />
+              <AuthorDate
+                author={news[2]?.author}
+                date={news[2]?.published_at}
+              />
               <h1 className="font-bold text-xl line-clamp-2">
-                Berita Tentang AI yang menjarah Tempat Umum, Akibatkan Kerugian
-                2 Miliar{" "}
+                {news[2]?.title}
               </h1>
             </div>
             <div className="flex flex-col gap-2">
               <img
-                src="/image/placeholder.webp"
+                src={news[3]?.image}
                 className="w-full rounded-lg h-35 object-cover"
                 alt="news"
               />
-              <AuthorDate author="Aswin Pranaja" date="20 Juli 2025" />
+              <AuthorDate
+                author={news[3]?.author}
+                date={news[3]?.published_at}
+              />
               <h1 className="font-bold text-xl line-clamp-2">
-                Berita Tentang AI yang menjarah Tempat Umum, Akibatkan Kerugian
-                2 Miliar{" "}
+                {news[3]?.title}
               </h1>
             </div>
           </div>
         </div>
-        <div className="flex h-[1px] mx-30 my-15 bg-black/30 rounded-full"></div>
+        )}
+        <div className="flex h-[1px] mx-20 my-15 bg-black/30 rounded-full"></div>
         <div>
           <h1 className="font-bold text-2xl mb-10">Lastest News.</h1>
-          <div className="grid grid-cols-4 gap-x-3 gap-y-10">
-            {Array.from({ length: 8 }).map((_, index) => {
-              return (
-                <div key={index} className="flex flex-col gap-3">
-                  <img
-                    src="/image/placeholder.webp"
-                    className="w-full rounded-lg h-50 object-cover"
-                    alt="news"
-                  />
-                  <AuthorDate author="Aswin Pranaja" date="20 Juli 2025" />
-                  <h1 className="font-bold text-lg line-clamp-2">
-                    Berita Tentang AI yang menjarah Tempat Umum, Akibatkan
-                    Kerugian 2 Miliar{" "}
-                  </h1>
-                  <p className="line-clamp-2 text-sm">
-                    Berita Tentang AI yang menjarah Tempat Umum yang susah dan
-                    melihat semuanya, kuasai pernafasan udara untuk
-                    mengendalikan dunia agar kamu tahu rasanya.
-                  </p>
-                  <a className="underline text-primary cursor-pointer font-semibold text-sm">
-                    Read More →
-                  </a>
+          {loading && news.length === 0 ? (
+            <SkeletonGrid />
+          ) : (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-4 md:gap-x-3 gap-10 md:gap-y-10">
+                {news
+                  .filter((_, index) => index >= 4)
+                  .map((news, index) => {
+                    return (
+                      <div key={index} className="flex flex-col gap-3">
+                        <img
+                          src={news.image}
+                          className="w-full rounded-lg h-50 object-cover"
+                          alt="news"
+                        />
+                        <AuthorDate author={news.author} date={news.published_at} />
+                        <h1 className="font-bold text-lg line-clamp-2">
+                          {news.title}
+                        </h1>
+                        <p className="line-clamp-2 text-sm">{news.description}</p>
+                        <a
+                          href={news.url}
+                          target="_blank"
+                          className="underline text-primary cursor-pointer font-semibold text-sm"
+                        >
+                          Read More →
+                        </a>
+                      </div>
+                    );
+                  })}
+              </div>
+              {loading ? (
+                <div className="mt-8">
+                  <SkeletonGrid count={4} />
                 </div>
-              );
-            })}
-          </div>
+              ) : null}
+            </>
+          )}
           <div className="flex justify-center items-center mt-10">
-            <p className="cursor-pointer bg-primary/5 w-fit px-5 font-semibold text-primary py-2 rounded-full text-sm text-black/50 mt-5">
-              Show More →
+            <p
+              onClick={nextPage}
+              className={`bg-primary/5 w-fit px-5 font-semibold text-primary py-2 rounded-full text-sm text-black/50 mt-5 ${loading ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
+            >
+              {loading ? "Loading..." : "Show More →"}
             </p>
           </div>
         </div>
-        <div className="flex h-[1px] mx-30 my-15 bg-black/30 rounded-full"></div>
-        <div className="flex flex-row justify-between w-full items-center flex-col mb-10">
+        <div className="flex h-[1px] mx-20 my-15 bg-black/30 rounded-full"></div>
+        <div className="flex flex-col md:flex-row md:gap-0 gap-10 md:justify-between w-full items-center flex-col mb-10">
           <div className="flex flex-col gap-3">
             <h1 className="text-2xl font-bold">
               <span className="text-primary">N</span>ews.
@@ -153,7 +289,7 @@ function App() {
               </span>
             </p>
           </div>
-          <div className="flex flex-row gap-3">
+          <div className="flex w-full md:justify-end justify-start flex-row gap-3">
             {Array.from([
               {
                 name: "X",
@@ -163,7 +299,7 @@ function App() {
                 name: "Instagram",
                 icons: "ig.svg",
               },
-              
+
               {
                 name: "Email",
                 icons: "email.svg",
@@ -172,16 +308,17 @@ function App() {
               <img
                 key={index}
                 src={`/icons/${icons.icons}`}
-                className={`w-` + (5 + index-1)}
+                className={`w-4`}
                 alt={icons.name}
               />
             ))}
           </div>
         </div>
-        <div>
-        </div>
+        <div></div>
       </section>
-      <p className="text-black/50 text-center mb-3 text-sm">© News. All Right Reserved | Bayu Setiawan 2025</p>
+      <p className="text-black/50 text-center mb-3 text-sm">
+        © News. All Right Reserved | Bayu Setiawan 2025
+      </p>
     </div>
   );
 }

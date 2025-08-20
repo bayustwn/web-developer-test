@@ -1,6 +1,6 @@
 export default function Navbar() {
   return (
-    <div className="flex flex-row justify-between items-center">
+    <div className="flex flex-col gap-5 md:gap-0 md:flex-row justify-between items-center">
       <h1 className="text-black font-bold -tracking-[2px] text-2xl">
         <span className="text-primary">N</span>ews.
       </h1>
